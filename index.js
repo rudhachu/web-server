@@ -35,53 +35,66 @@ const bodyParser = require('body-parser');
 const { WebSocketServer } = require('ws');
 const { createServer } = require('http');
 
-const Router1 = require('./routes/base');
-const Router2 = require('./routes/ffmpeg');
-const Router3 = require('./routes/downloaders');
-const Router4 = require('./routes/converters');
-const Router5 = require('./routes/tools');
-const Router6 = require('./routes/ai');
-const Router7 = require('./routes/search');
-const Router8 = require('./routes/anime');
+// Import routes
+const routers = [
+    require('./routes/base'),
+    require('./routes/ffmpeg'),
+    require('./routes/downloaders'),
+    require('./routes/converters'),
+    require('./routes/tools'),
+    require('./routes/ai'),
+    require('./routes/search'),
+    require('./routes/anime'),
+];
 const uploadRouter = require('./routes/_upload');
+const qrCode = require('./qr');
+const pair = require('./pair');
+const webqr = require('./web-qr');
+const webpair = require('./web-pair');
 
+// Initialize the app and constants
 const app = express();
+const PORT = process.env.PORT || 8000;
+const publicDir = path.join(process.cwd(), 'public');
+
+// Middleware
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
-const port = process.env.PORT || 3001;
 
+// HTTP server and WebSocket setup
 const server = createServer(app);
-
 const wss = new WebSocketServer({ server });
 const connectedClients = new Set();
 
-wss.on('connection', ws => {
+// WebSocket connection handling
+wss.on('connection', (ws) => {
     connectedClients.add(ws);
-
-    ws.on('close', () => {
-        connectedClients.delete(ws);
-    });
+    ws.on('close', () => connectedClients.delete(ws));
 });
 
-app.use(express.json());
-app.use('/api', Router1);
-app.use('/api', Router2);
-app.use('/api', Router3);
-app.use('/api', Router4);
-app.use('/api', Router5);
-app.use('/api', Router6);
-app.use('/api', Router7);
-app.use('/api', Router8);
+// API routes
+routers.forEach((router) => app.use('/api', router));
 app.use('/api/upload', uploadRouter);
+app.use('/qr-code', qrCode);
+app.use('/code', pair);
+app.use('/web-qrcode', webqr);
+app.use('/web-code', webpair);
 
-app.get('/api/users', (_, res) => {
-    res.json({ users: connectedClients.size });
+// Static files and user tracking
+app.use(express.static(publicDir));
+app.get('/api/users', (_, res) => res.json({ users: connectedClients.size }));
+
+// Serve static HTML pages
+['/pair', '/qr', '/web-pair', '/web-qr'].forEach((route) => {
+    app.get(route, (req, res) => res.sendFile(path.join(publicDir, `${route.substring(1)}.html`)));
 });
 
-app.get('/', (_, res) => {
-    res.sendFile(path.join(process.cwd(), 'web', 'index.html'));
+// Root route
+app.get('/', (req, res) => res.sendFile(path.join(publicDir, 'index.html')));
+
+// Start the server
+server.listen(PORT, () => {
+    console.log(`Server running at http://localhost:${PORT}`);
 });
 
-server.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
-});
+module.exports = app;
